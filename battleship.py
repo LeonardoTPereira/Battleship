@@ -1,52 +1,59 @@
 # Adaptado de https://gist.github.com/w0300133/7f3e3e6f836e519f64272150ca34080c
 import csv
+from enum import IntEnum
+
+
+class Ships(IntEnum):
+    WATER = 0
+    SUBMARINE = 1
+    DESTROYER = 2
+    CRUISER = 3
+    BATTLESHIP = 4
+    AIRCRAFT_CARRIER = 5
+
+
+BOARD_SIZE = 10
+COLUMN_NAMES = 'ABCDEFGHIJ'
 
 
 def generate_start_map(_size):
     starting_map = []
-    for counter in range(_size):
+    for x in range(_size):
         current_line = []
-        for counter in range(_size):
+        for y in range(_size):
             current_line.append("~")
         starting_map.append(current_line)
     return starting_map
 
 
-def shot_to_numbers(_coordinate_string, _headings_list):
-    shot_list = [int(_coordinate_string[1])]
-    for column in _headings_list:
-        if _coordinate_string[0] == column:
-            shot_list.append(_headings_list.index(column))
-    return shot_list
+def shot_to_numbers(_coordinate_string):
+    row_value = int(_coordinate_string[1])
+    column_value = ord(_coordinate_string[0]) - ord('A')
+    coordinates = (row_value, column_value)
+    return coordinates
 
 
 def check_hit(_shot, _map):
-    if _map[_shot[0]][_shot[1]] == "O":
+    if _map[_shot[0]][_shot[1]] == Ships.WATER.name[0]:
         return ["X", "Miss!"]
-    elif _map[_shot[0]][_shot[1]] == "B":
-        return ["B", "You hit the BATTLESHIP!"]
-    elif _map[_shot[0]][_shot[1]] == "S":
-        return ["S", "You hit the SUBMARINE!"]
-    elif _map[_shot[0]][_shot[1]] == "D":
-        return ["D", "You hit the DESTROYER!"]
-    elif _map[_shot[0]][_shot[1]] == "C":
-        return ["C", "You hit the CARRIER!"]
+    elif _map[_shot[0]][_shot[1]] == Ships.SUBMARINE.name[0]:
+        ship = Ships.SUBMARINE
+    elif _map[_shot[0]][_shot[1]] == Ships.DESTROYER.name[0]:
+        ship = Ships.DESTROYER
+    elif _map[_shot[0]][_shot[1]] == Ships.CRUISER.name[0]:
+        ship = Ships.CRUISER
+    elif _map[_shot[0]][_shot[1]] == Ships.BATTLESHIP.name[0]:
+        ship = Ships.BATTLESHIP
+    elif _map[_shot[0]][_shot[1]] == Ships.AIRCRAFT_CARRIER.name[0]:
+        ship = Ships.AIRCRAFT_CARRIER
+    else:
+        return '!'
+    return [ship.name[0], 'You hit the ', ship.name, '!']
 
 
 def update_map(_last_shot_cell, _last_shot_result, _map):
     _map[_last_shot_cell[0]][_last_shot_cell[1]] = _last_shot_result
     return _map
-
-
-def check_ship_status(_ship_list, _ship_map):
-    ship_status = []
-    for index in range(len(_ship_list)):
-        ship_status.append(False)
-    for index in range(len(_ship_list)):
-        for list in _ship_map:
-            if _ship_list[index] in list:
-                ship_status[index] = True
-    return ship_status
 
 
 def print_welcome_message():
@@ -79,68 +86,86 @@ def read_map_from_csv(_file_name):
 
 
 def play_round(current_map, grid_size, missile_count, ship_map):
-    valid_rows = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-    valid_columns = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
-    ship_symbols = ["B", "S", "D", "C"]
-    ship_names = ["BATTLESHIP", "SUBMARINE", "DESTROYER", "CARRIER"]
     previous_shots = []
     # ------ Starting the round. Code will need to loop until the user runs out of guesses or wins. ------
     while missile_count > 0:
-        # --- Display currentMap to the user ---
+        show_player_map(current_map, grid_size, missile_count)
+        shot_coordinate_list = get_shot_input(previous_shots)
         print("---------------------------")
-        print("  " + " ".join(valid_columns))
-        for counter in range(grid_size):
-            print(str(counter) + " " + " ".join(current_map[counter]))
-
-        print("---------------------------\n"
-              "MISSILES REMAINING: " + str(missile_count))
-
-        # --- Get location input from the user for their shot ---
-        while True:
-            userShot = input("Enter the coordinates you wish to shoot: ").upper()
-            if len(userShot) != 2:
-                print("Please enter a valid coordinate:")
-            elif userShot in previous_shots:
-                print("You've already shot there, pick a different coordinate.")
-            elif userShot[0] not in valid_columns or userShot[1] not in valid_rows:
-                print("Please choose a coordinate in range.")
-            else:
-                previous_shots.append(userShot)
-                shotCoordinateList = shot_to_numbers(userShot, valid_columns)
-                break
-
-        print("---------------------------")
-
-        # --- Check the shot vs. shipMap to verify a hit or miss ---
-        shotResult = check_hit(shotCoordinateList, ship_map)
-        print(shotResult[1])
-
-        # --- Update the  game map to refer to when checking ship status ---
-        ship_map = update_map(shotCoordinateList, "X", ship_map)
-
-        # - Check the status of the ships to check win condition -
-        shipsStillAlive = check_ship_status(ship_symbols, ship_map)
-        for index in range(len(shipsStillAlive)):
-            if shipsStillAlive[index]:
-                print("The " + ship_names[index] + " still sails!")
-            else:
-                print("You have sunk the " + ship_names[index] + "!")
-
-        # --- Update currentMap ---
-        current_map = update_map(shotCoordinateList, shotResult[0], current_map)
-
-        # - Check win condition. If not ships remain end the game. ---
-        if True not in shipsStillAlive:
+        shot_result = check_hit(shot_coordinate_list, ship_map)
+        ship_map = update_map(shot_coordinate_list, "X", ship_map)
+        ships_still_alive = check_ship_status(ship_map)
+        check_ships_alive(ships_still_alive)
+        current_map = update_map(shot_coordinate_list, shot_result[0], current_map)
+        if True not in ships_still_alive:
             print("Good shooting! You have destroyed the enemy fleet!")
             break
-
-        # - Check lose condition. Modify the missile count then check if the user has shots remaining. -
         missile_count -= 1
         if missile_count == 0:
             print(
                 "Looks like the enemy fleet has escaped the harbour! You had better get your crew in order Admiral!")
 
-        # ------ End of the Round. ------
+
+def check_ship_status(_ship_map):
+    ship_status = []
+    total_ships = len(Ships)-1
+    for index in range(total_ships):
+        ship_status.append(False)
+    for index in range(total_ships):
+        for _list in _ship_map:
+            if Ships(index+1).name[0] in _list:
+                ship_status[index] = True
+    return ship_status
+
+
+def check_ships_alive(ships_still_alive):
+    for index in range(len(ships_still_alive)):
+        if ships_still_alive[index]:
+            print("The " + Ships(index).name + " still sails!")
+        else:
+            print("You have sunk the " + Ships(index).name + "!")
+
+
+def get_shot_input(previous_shots):
+    shot_coordinate_list = []
+    while True:
+        user_shot = input("Enter the coordinates you wish to shoot: ").upper()
+        if len(user_shot) != 2:
+            print("Please enter a valid coordinate:")
+            continue
+        if not user_shot[0].isalpha():
+            print('Input must be Column Letter|Row Number')
+            continue
+        shot_coordinate_list = shot_to_numbers(user_shot)
+        if shot_coordinate_list in previous_shots:
+            print("You've already shot there, pick a different coordinate.")
+        elif not is_coordinate_valid(shot_coordinate_list):
+            print('Please choose a coordinate in range')
+        else:
+            previous_shots.append(shot_coordinate_list)
+            break
+    return shot_coordinate_list
+
+
+def is_coordinate_valid(_user_shot):
+    if _user_shot[0] < 0:
+        return False
+    elif _user_shot[0] >= BOARD_SIZE:
+        return False
+    elif _user_shot[1] < 0:
+        return False
+    elif _user_shot[1] >= BOARD_SIZE:
+        return False
+    return True
+
+
+def show_player_map(current_map, grid_size, missile_count):
+    print("---------------------------")
+    print("  " + " ".join(COLUMN_NAMES))
+    for counter in range(grid_size):
+        print(str(counter) + " " + " ".join(current_map[counter]))
+    print("---------------------------\n"
+          "MISSILES REMAINING: " + str(missile_count))
 
 
 def get_desired_difficulty():
@@ -148,14 +173,14 @@ def get_desired_difficulty():
     while True:
         difficulty = input("What difficulty would you like to play? (easy/hard) ").lower()
         if difficulty == "easy":
-            missileCount = 50  # missileCount used to limit the players guess total
+            missile_count = 50  # missileCount used to limit the players guess total
             break
         elif difficulty == "hard":
-            missileCount = 35  # missileCount used to limit the players guess total
+            missile_count = 35  # missileCount used to limit the players guess total
             break
         else:
             print("Please enter a valid difficulty setting.")
-    return missileCount
+    return missile_count
 
 
 def check_if_play_again():
@@ -175,7 +200,7 @@ def check_if_play_again():
 
 def play_battleship():
     grid_size = 10
-    file_name = "battleshipMap.txt"
+    file_name = "map.csv"
     playing = True
     print_welcome_message()
     while playing:
