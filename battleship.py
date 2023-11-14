@@ -1,6 +1,9 @@
 # Adaptado de https://gist.github.com/w0300133/7f3e3e6f836e519f64272150ca34080c
+# Sprites de https://opengameart.org/content/sea-warfare-set-ships-and-more
 import csv
+import random
 from enum import IntEnum
+from collections import defaultdict
 
 
 class Ships(IntEnum):
@@ -13,42 +16,41 @@ class Ships(IntEnum):
 
 
 BOARD_SIZE = 10
-COLUMN_NAMES = 'ABCDEFGHIJ'
 
 
-def generate_start_map(_size):
+def generate_player_map(size):
     starting_map = []
-    for x in range(_size):
+    for x in range(size):
         current_line = []
-        for y in range(_size):
+        for y in range(size):
             current_line.append("~")
         starting_map.append(current_line)
+
     return starting_map
 
 
-def shot_to_numbers(_coordinate_string):
+def shotToNumbers(_coordinate_string):
     row_value = int(_coordinate_string[1])
     column_value = ord(_coordinate_string[0]) - ord('A')
     coordinates = (row_value, column_value)
     return coordinates
 
 
-def check_hit(_shot, _map):
-    if _map[_shot[0]][_shot[1]] == Ships.WATER.name[0]:
+def checkHit(_shot, _map):
+    if _map[_shot[0]][_shot[1]][0] == Ships.WATER.name[0]:
         return ["X", "Miss!"]
-    elif _map[_shot[0]][_shot[1]] == Ships.SUBMARINE.name[0]:
-        ship = Ships.SUBMARINE
-    elif _map[_shot[0]][_shot[1]] == Ships.DESTROYER.name[0]:
-        ship = Ships.DESTROYER
-    elif _map[_shot[0]][_shot[1]] == Ships.CRUISER.name[0]:
-        ship = Ships.CRUISER
-    elif _map[_shot[0]][_shot[1]] == Ships.BATTLESHIP.name[0]:
+    if _map[_shot[0]][_shot[1]][0] == Ships.BATTLESHIP.name[0]:
         ship = Ships.BATTLESHIP
-    elif _map[_shot[0]][_shot[1]] == Ships.AIRCRAFT_CARRIER.name[0]:
+    elif _map[_shot[0]][_shot[1]][0] == Ships.SUBMARINE.name[0]:
+        ship = Ships.SUBMARINE
+    elif _map[_shot[0]][_shot[1]][0] == Ships.DESTROYER.name[0]:
+        ship = Ships.DESTROYER
+    elif _map[_shot[0]][_shot[1]][0] == Ships.CRUISER.name[0]:
+        ship = Ships.CRUISER
+    elif _map[_shot[0]][_shot[1]][0] == Ships.AIRCRAFT_CARRIER.name[0]:
         ship = Ships.AIRCRAFT_CARRIER
     else:
         return '!'
-    return [ship.name[0], 'You hit the ', ship.name, '!']
     return [ship.name[0], "You hit the", ship.name, "!"]
 
 
@@ -57,18 +59,49 @@ def update_map(_last_shot_cell, _last_shot_result, _map):
     return _map
 
 
-def checkShipStatus(_ship_list, _ship_map):
-    ship_status = []
-    for index in range(len(_ship_list)):
-        ship_status.append(False)
-    for index in range(len(_ship_list)):
-        for list in _ship_map:
-            if _ship_list[index] in list:
-                ship_status[index] = True
-    return ship_status
+def update_ship_dictionary(_shot_coordinates, _ship_dictionary):
+    sunken_name = ''
+    sunken_name = find_and_attack_ship(_ship_dictionary, _shot_coordinates, sunken_name)
+    if sunken_name:
+        _ship_dictionary.pop(sunken_name)
+    for name in _ship_dictionary.keys():
+        print("A " + get_ship_name_from_symbol(name) + " still sails!")
 
 
-def create_ship(board, ship):
+def find_and_attack_ship(_ship_dictionary, _shot_coordinates, sunken_name):
+    for name, ship_coordinates in _ship_dictionary.items():
+        has_found, sunken_name = find_coordinate_and_attack(_shot_coordinates, name, ship_coordinates)
+        if has_found:
+            break
+    return sunken_name
+
+
+def find_coordinate_and_attack(_shot_coordinates, name, ship_coordinates):
+    sunken_name = ''
+    has_found = False
+    if _shot_coordinates in ship_coordinates:
+        sunken_name = attack_ship(_shot_coordinates, ship_coordinates, name)
+        has_found = True
+    return has_found, sunken_name
+
+
+def attack_ship(_shot_coordinates, coordinates, name):
+    sunken_name = ''
+    coordinates.remove(_shot_coordinates)
+    print("You have shot a " + get_ship_name_from_symbol(name) + "!")
+    if len(coordinates) == 0:
+        print("And you sunk it!")
+        sunken_name = name
+    return sunken_name
+
+
+def get_ship_name_from_symbol(symbol):
+    for ship in Ships:
+        if ship.name[0] == symbol[0]:
+            return ship.name
+
+
+def create_ship(board, ship, i=0):
     ship_size = ship.value
     overlap = True
     completed = False
@@ -92,7 +125,7 @@ def create_ship(board, ship):
         overlap = False
         tile_count = 0
         while tile_count < ship_size:
-            board[ship_r + increment[0] * tile_count][ship_c + increment[1] * tile_count] = ship.name[0]
+            board[ship_r + increment[0] * tile_count][ship_c + increment[1] * tile_count] = ship.name[0]+str(i)
             tile_count += 1
         completed = True
 
@@ -100,12 +133,14 @@ def create_ship(board, ship):
 def create_ships():
     board = [[Ships.WATER.name[0]] * BOARD_SIZE for _ in range(BOARD_SIZE)]
     for i in range(2):
-        create_ship(board, Ships.SUBMARINE)
+        create_ship(board, Ships.SUBMARINE, i)
     for i in range(2):
-        create_ship(board, Ships.DESTROYER)
+        create_ship(board, Ships.DESTROYER, i)
     create_ship(board, Ships.CRUISER)
     create_ship(board, Ships.BATTLESHIP)
     create_ship(board, Ships.AIRCRAFT_CARRIER)
+    for row in board:
+        print(row)
     return board
 
 
@@ -144,33 +179,19 @@ def run_game_loop(_grid_size, ship_map, ship_dict):
     missile_count = select_difficulty()
     player_map = generate_player_map(_grid_size)
     previous_shots = []
-    while missile_count > 0:
+    while ship_dict and missile_count > 0:
         show_player_map(_grid_size, missile_count, player_map)
         shot_coordinate_list = get_shot_input(previous_shots)
         print("---------------------------")
         shot_result = checkHit(shot_coordinate_list, ship_map)
         ship_map = update_map(shot_coordinate_list, "X", ship_map)
-        ''''
-        # - Check the status of the ships to check win condition -
-        shipsStillAlive = checkShipStatus(ship_map)
-        for index in range(len(shipsStillAlive)):
-            if shipsStillAlive[index]:
-                print("The " + shipNames[index] + " still sails!")
-            else:
-                print("You have sunk the " + shipNames[index] + "!")
-        '''
-
+        update_ship_dictionary(shot_coordinate_list, ship_dict)
         player_map = update_map(shot_coordinate_list, shot_result[0], player_map)
-
-        ''''
-        # - Check win condition. If not ships remain end the game. ---
-        if True not in shipsStillAlive:
-            print("Good shooting! You have destroyed the enemy fleet!")
-            break
-        '''
-
         missile_count -= 1
-    print("Looks like the enemy fleet has escaped the harbour! You had better get your crew in order Admiral!")
+    if not ship_dict:
+        print("Good shooting! You have destroyed the enemy fleet!")
+    else:
+        print("Looks like the enemy fleet has escaped the harbour! You had better get your crew in order Admiral!")
 
 
 def get_shot_input(previous_shots):
@@ -184,6 +205,7 @@ def get_shot_input(previous_shots):
             print("Input must be Column Letter|Row Number")
             continue
         shot_coordinate_list = shotToNumbers(user_shot)
+        print(shot_coordinate_list)
         if shot_coordinate_list in previous_shots:
             print("You've already shot there, pick a different coordinate.")
         elif not is_coordinate_valid(shot_coordinate_list):
@@ -276,64 +298,55 @@ def initialize_ship_dict(_ship_map, grid_size):
     ship_dict = defaultdict(list)
     for i in range(len(_ship_map)):
         for j in range(len(_ship_map[i])):
-            if _ship_map[i][j] == Ships.SUBMARINE.name[0]:
+            if _ship_map[i][j][0] == Ships.SUBMARINE.name[0]:
                 ship_size = Ships.SUBMARINE.value
-                ship_symbol = Ships.SUBMARINE.name[0]
-            elif _ship_map[i][j] == Ships.DESTROYER.name[0]:
+            elif _ship_map[i][j][0] == Ships.DESTROYER.name[0]:
                 ship_size = Ships.DESTROYER.value
-                ship_symbol = Ships.DESTROYER.name[0]
-            elif _ship_map[i][j] == Ships.CRUISER.name[0]:
+            elif _ship_map[i][j][0] == Ships.CRUISER.name[0]:
                 ship_size = Ships.CRUISER.value
-                ship_symbol = Ships.CRUISER.name[0]
-            elif _ship_map[i][j] == Ships.BATTLESHIP.name[0]:
+            elif _ship_map[i][j][0] == Ships.BATTLESHIP.name[0]:
                 ship_size = Ships.BATTLESHIP.value
-                ship_symbol = Ships.BATTLESHIP.name[0]
-            elif _ship_map[i][j] == Ships.AIRCRAFT_CARRIER.name[0]:
+            elif _ship_map[i][j][0] == Ships.AIRCRAFT_CARRIER.name[0]:
                 ship_size = Ships.AIRCRAFT_CARRIER.value
-                ship_symbol = Ships.AIRCRAFT_CARRIER.name[0]
             else:
+                continue
+            ship_symbol = _ship_map[i][j][0:2]
+            if ship_dict.get(ship_symbol):
                 continue
             find_ship_and_fill_dict_with_coordinates(_ship_map, i, j, ship_dict, ship_size, ship_symbol, grid_size)
     return ship_dict
 
 
 def find_ship_and_fill_dict_with_coordinates(_ship_map, i, j, ship_dict, ship_size, ship_symbol, grid_size):
-    increment_index = 0
     increments = [(1, 0), (0, 1)]
-    completed = False
-    while increment_index < len(increments) and not completed:
-        pieces_found = 1
-        while pieces_found < ship_size:
-            offset_i = i + pieces_found * increments[increment_index][0]
-            offset_j = j + pieces_found * increments[increment_index][1]
-            if offset_i >= grid_size or offset_j >= grid_size:
-                increment_index += 1
-                break
-            if _ship_map[offset_i][offset_j] == ship_symbol:
-                pieces_found += 1
-            else:
-                increment_index += 1
-                break
-        if increment_index >= len(increments) or pieces_found < ship_size:
-            continue
-        offset_i = i + pieces_found * increments[increment_index][0]
-        offset_j = j + pieces_found * increments[increment_index][1]
-        if _ship_map[offset_i][offset_j] != ship_symbol:
-            completed = True
-        else:
-            offset_i = i + (pieces_found + 1) * increments[increment_index][0]
-            offset_j = j + (pieces_found + 1) * increments[increment_index][1]
-            if _ship_map[offset_i][offset_j] == ship_symbol:
-                completed = True
-    if not completed:
-        return
-    ship_coords = []
+    increment_index = 0
+    if ship_size > 1:
+        found, increment_index = find_direction(_ship_map, grid_size, i, increments, j, ship_symbol)
+        if not found:
+            return
     for pieces_found in range(ship_size):
         offset_i = i + pieces_found * increments[increment_index][0]
         offset_j = j + pieces_found * increments[increment_index][1]
-        ship_coords.append((offset_i, offset_j))
-        pieces_found += 1
-    ship_dict[ship_symbol].append(ship_coords)
+        ship_dict[ship_symbol].append((offset_i, offset_j))
+
+
+def find_direction(_ship_map, grid_size, i, increments, j, ship_symbol):
+    increment_index = 0
+    found = False
+    while increment_index < len(increments) and not found:
+        offset_i = i + increments[increment_index][0]
+        offset_j = j + increments[increment_index][1]
+        if offset_i >= grid_size or offset_j >= grid_size:
+            increment_index += 1
+            continue
+        if len(_ship_map[offset_i][offset_j]) < 2:
+            increment_index += 1
+            continue
+        if _ship_map[offset_i][offset_j][0:2] == ship_symbol[0:2]:
+            found = True
+        else:
+            increment_index += 1
+    return found, increment_index
 
 
 def main():
